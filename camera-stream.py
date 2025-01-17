@@ -11,10 +11,12 @@ camera.framerate = 30  # Set framerate
 
 def generate_frames():
     while True:
-        # Capture frame as bytes
-        frame = camera.capture()
-        yield (b"--frame\r\n"
-               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+        # Capture frame as a byte stream
+        with io.BytesIO() as stream:
+            camera.capture_to_stream(stream, format='jpeg')  # Capture to a byte stream in JPEG format
+            frame = stream.getvalue()  # Get byte data from the stream
+            yield (b"--frame\r\n"
+                   b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
 
 @app.route('/video_feed')
 def video_feed():
