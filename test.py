@@ -89,12 +89,18 @@ with Picamera2() as picam2:
     # Set the update_frame callback to handle the frames
     picam2.pre_callback = output.update_frame
 
-    # Configure the camera with resolution, framerate, colour_space, and transform
+    # Configure the camera with resolution, framerate, colour_space, transform, and main key
     camera_config = {
         "resolution": (640, 480),
         "framerate": 24,
         "colour_space": 'YUV420',  # Added colour_space configuration
-        "transform": 0  # No rotation or flip
+        "transform": 0,  # No rotation or flip
+        "main": {
+            "type": "raw",  # 'raw' type is typically used for capturing frames
+            "size": (640, 480),
+            "format": "BGR888",  # Use BGR format for standard color frame
+            "buffer_count": 3,  # Buffer count for frames
+        }
     }
     
     picam2.configure(camera_config)
