@@ -89,11 +89,17 @@ with Picamera2() as picam2:
     # Set the update_frame callback to handle the frames
     picam2.pre_callback = output.update_frame
 
+    # Configure the camera with resolution, framerate, and colour_space
+    camera_config = {
+        "resolution": (640, 480),
+        "framerate": 24,
+        "colour_space": 'YUV420'  # Added colour_space configuration
+    }
+    
+    picam2.configure(camera_config)
+
     # Start the camera preview
     picam2.start_preview(Preview.NULL)
-
-    # Set the camera resolution and framerate
-    picam2.configure({"resolution": (640, 480), "framerate": 24})
 
     # Start capturing video
     picam2.start_recording(output, format="mjpeg")
