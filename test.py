@@ -22,6 +22,7 @@ def capture_frame():
     while True:
         ret, frame = cap.read()
         if not ret:
+            print("Failed to grab frame")
             break
 
         # Convert frame to RGB (Flask's render_template expects RGB)
@@ -30,6 +31,9 @@ def capture_frame():
         # Lock the frame variable so that it can be updated safely
         with lock:
             output_frame = frame
+
+        # Print statement indicating that a new frame is captured
+        print("New frame captured")
 
         # Sleep to reduce CPU load
         time.sleep(0.1)
@@ -45,6 +49,10 @@ def generate():
                 if ret:
                     # Convert the encoded frame to bytes
                     frame = jpeg.tobytes()
+
+                    # Print statement indicating the frame is being sent
+                    print("Sending frame to client")
+
                     # Yield the frame as a multipart HTTP response
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
