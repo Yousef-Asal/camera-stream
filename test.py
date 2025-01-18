@@ -12,7 +12,7 @@ def start_video_stream():
     
     # Using ffmpeg to stream the output as H.264 over HTTP
     ffmpeg_cmd = [
-        'ffmpeg', '-re', '-i', '-', '-vcodec', 'copy', '-an', '-f', 'mpegts', 'http://localhost:8000/stream'
+        'ffmpeg', '-re', '-i', '-', '-vcodec', 'copy', '-an', '-f', 'mpegts', 'http://127.0.0.1:8080/stream'
     ]
 
     # Run libcamera-vid and ffmpeg in subprocesses
@@ -25,8 +25,24 @@ def start_video_stream():
 
 # Function to handle HTTP server (for MJPEG or raw streams)
 def run_http_server():
-    with HTTPServer(('', 8000), SimpleHTTPRequestHandler) as server:
-        print("Serving video stream on http://localhost:8000/stream")
+    # This handler serves the video stream as it is
+    class VideoStreamHandler(SimpleHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == '/stream':
+                self.send_response(200)
+                self.send_header('Content-type', 'video/mp2t')
+                self.end_headers()
+                with open('/dev/null', 'rb') as f:
+                    while True:
+                        data = f.read(1024)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+            else:
+                super().do_GET()
+
+    with HTTPServer(('', 8080), VideoStreamHandler) as server:
+        print("Serving video stream on http://localhost:8080/stream")
         server.serve_forever()
 
 # Start the video stream in a separate thread
