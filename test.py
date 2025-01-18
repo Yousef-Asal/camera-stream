@@ -1,54 +1,56 @@
+import cv2
 import subprocess
-import threading
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from flask import Flask, Response
 
-# Function to start libcamera-vid and stream via HTTP
-def start_video_stream():
-    # Start libcamera-vid to capture video stream and pipe it to ffmpeg for HTTP serving
-    libcamera_cmd = [
-        'libcamera-vid', '--width', '640', '--height', '480', '--framerate', '24', '--inline',
-        '--output', '-'
-    ]
-    
-    # Using ffmpeg to stream the output as H.264 over HTTP
-    ffmpeg_cmd = [
-        'ffmpeg', '-re', '-i', '-', '-vcodec', 'copy', '-an', '-f', 'mpegts', 'http://127.0.0.1:8080/stream'
-    ]
+app = Flask(__name__)
 
-    # Run libcamera-vid and ffmpeg in subprocesses
-    libcamera_process = subprocess.Popen(libcamera_cmd, stdout=subprocess.PIPE)
-    ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdin=libcamera_process.stdout)
+# Open the camera using OpenCV (you can change this to your camera source)
+cap = cv2.VideoCapture(0)
 
-    # Wait for the processes to finish
-    libcamera_process.wait()
-    ffmpeg_process.wait()
+# Check if the camera opened successfully
+if not cap.isOpened():
+    print("Error: Could not open camera.")
+    exit()
 
-# Function to handle HTTP server (for MJPEG or raw streams)
-def run_http_server():
-    # This handler serves the video stream as it is
-    class VideoStreamHandler(SimpleHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == '/stream':
-                self.send_response(200)
-                self.send_header('Content-type', 'video/mp2t')
-                self.end_headers()
-                with open('/dev/null', 'rb') as f:
-                    while True:
-                        data = f.read(1024)
-                        if not data:
-                            break
-                        self.wfile.write(data)
-            else:
-                super().do_GET()
+# FFmpeg command for streaming
+ffmpeg_command = [
+    "ffmpeg",
+    "-y",  # Overwrite output file if it exists
+    "-f", "rawvideo",  # Input format
+    "-vcodec", "rawvideo",  # Input codec
+    "-pix_fmt", "bgr24",  # Pixel format
+    "-s", "640x480",  # Resolution
+    "-r", "24",  # Frames per second
+    "-i", "-",  # Input from stdin
+    "-c:v", "libx264",  # Video codec
+    "-f", "mpegts",  # Output format
+    "http://127.0.0.1:8080/stream"  # Output stream URL
+]
 
-    with HTTPServer(('', 8080), VideoStreamHandler) as server:
-        print("Serving video stream on http://localhost:8080/stream")
-        server.serve_forever()
+# Start the FFmpeg process
+ffmpeg_process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE)
 
-# Start the video stream in a separate thread
-video_thread = threading.Thread(target=start_video_stream)
-video_thread.daemon = True
-video_thread.start()
+def generate_video():
+    while True:
+        # Capture frame-by-frame from the camera
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-# Start the HTTP server to serve the video stream
-run_http_server()
+        # Write the frame to FFmpeg's stdin
+        ffmpeg_process.stdin.write(frame.tobytes())
+
+        # Yield the frame for streaming via Flask
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode('.jpg', frame)[1].tobytes() + b'\r\n')
+
+@app.route('/stream')
+def stream_video():
+    return Response(generate_video(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/')
+def index():
+    return "Streaming video at <a href='/stream'>/stream</a>"
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=8080)
