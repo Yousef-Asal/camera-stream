@@ -1,29 +1,58 @@
+from picamera2 import Picamera2, Preview
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import time
 import io
-import picamera
+from threading import Condition
 
-class MJPEGStreamHandler(BaseHTTPRequestHandler):
+class StreamingOutput:
+    def __init__(self):
+        self.frame = None
+        self.condition = Condition()
+
+    def update_frame(self, new_frame):
+        with self.condition:
+            self.frame = new_frame
+            self.condition.notify_all()
+
+class StreamingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/stream.mjpg':
             self.send_response(200)
-            self.send_header('Content-type', 'multipart/x-mixed-replace; boundary=FRAME')
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
-            with picamera.PiCamera(resolution='640x480', framerate=24) as camera:
-                stream = io.BytesIO()
-                for _ in camera.capture_continuous(stream, format='jpeg', use_video_port=True):
+            try:
+                while True:
+                    with output.condition:
+                        output.condition.wait()
+                        frame = output.frame
                     self.wfile.write(b'--FRAME\r\n')
                     self.send_header('Content-Type', 'image/jpeg')
-                    self.send_header('Content-Length', len(stream.getvalue()))
+                    self.send_header('Content-Length', len(frame))
                     self.end_headers()
-                    self.wfile.write(stream.getvalue())
-                    stream.seek(0)
-                    stream.truncate()
+                    self.wfile.write(frame)
+            except Exception as e:
+                print(f"Streaming client disconnected: {e}")
         else:
             self.send_error(404)
             self.end_headers()
 
-address = ('', 8000)
-server = HTTPServer(address, MJPEGStreamHandler)
+# Initialize the camera
+picam2 = Picamera2()
+config = picam2.create_video_configuration({"size": (640, 480)})
+picam2.configure(config)
+output = StreamingOutput()
+
+# Callback to update the output frame
+def update_frame():
+    buffer = picam2.capture_buffer("main")
+    output.update_frame(buffer)
+
+picam2.pre_callback = update_frame
+picam2.start()
+
+# Start the server
+server = HTTPServer(('0.0.0.0', 8000), StreamingHandler)
 print("Streaming on port 8000...")
-server.serve_forever()
+try:
+    server.serve_forever()
+finally:
+    picam2.stop()
