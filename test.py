@@ -1,43 +1,38 @@
-from picamera2 import Picamera2
-import time
-from http.server import SimpleHTTPRequestHandler, HTTPServer
-import io
+import subprocess
 import threading
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 
-# Initialize the Picamera2 object
-picam2 = Picamera2()
+# Function to start libcamera-vid and stream via HTTP
+def start_video_stream():
+    # Start libcamera-vid to capture video stream and pipe it to ffmpeg for HTTP serving
+    libcamera_cmd = [
+        'libcamera-vid', '--width', '640', '--height', '480', '--framerate', '24', '--inline',
+        '--output', '-'
+    ]
+    
+    # Using ffmpeg to stream the output as H.264 over HTTP
+    ffmpeg_cmd = [
+        'ffmpeg', '-re', '-i', '-', '-vcodec', 'copy', '-an', '-f', 'mpegts', 'http://localhost:8000/stream'
+    ]
 
-# Set the resolution and framerate directly (this is the minimal configuration)
-picam2.configure(picam2.create_preview_configuration(main={"size": (640, 480)}, lores={"size": (320, 240)}))
+    # Run libcamera-vid and ffmpeg in subprocesses
+    libcamera_process = subprocess.Popen(libcamera_cmd, stdout=subprocess.PIPE)
+    ffmpeg_process = subprocess.Popen(ffmpeg_cmd, stdin=libcamera_process.stdout)
 
-# Start the camera preview
-picam2.start_preview()
+    # Wait for the processes to finish
+    libcamera_process.wait()
+    ffmpeg_process.wait()
 
-# Function to handle MJPEG stream
-def stream_mjpeg():
+# Function to handle HTTP server (for MJPEG or raw streams)
+def run_http_server():
     with HTTPServer(('', 8000), SimpleHTTPRequestHandler) as server:
-        print("Serving MJPEG stream on http://localhost:8000/stream.mjpg")
+        print("Serving video stream on http://localhost:8000/stream")
         server.serve_forever()
 
-# Function to capture frames and send them as MJPEG
-def capture_frames():
-    while True:
-        # Capture a frame from the camera
-        frame = picam2.capture_array()
-        # Encode the frame as JPEG
-        with io.BytesIO() as output:
-            picam2.encode_image(frame, 'jpeg', output)
-            frame_data = output.getvalue()
-        
-        # Send the frame data as MJPEG (you can adapt this to your needs)
-        # For now, this is the placeholder for the MJPEG loop
-        
-        time.sleep(1/24)  # 24 fps (adjust as necessary)
+# Start the video stream in a separate thread
+video_thread = threading.Thread(target=start_video_stream)
+video_thread.daemon = True
+video_thread.start()
 
-# Start the MJPEG stream in a separate thread
-stream_thread = threading.Thread(target=stream_mjpeg)
-stream_thread.daemon = True
-stream_thread.start()
-
-# Capture frames in the main thread
-capture_frames()
+# Start the HTTP server to serve the video stream
+run_http_server()
