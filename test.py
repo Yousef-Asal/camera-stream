@@ -8,10 +8,10 @@ class StreamingOutput:
         self.frame = None
         self.condition = Condition()
 
-    def update_frame(self, new_frame):
-        with self.condition:
-            self.frame = new_frame
-            self.condition.notify_all()
+    def update_frame():
+        buffer = picam2.capture_buffer("main")
+        print(f"Captured frame of size: {len(buffer)} bytes")  # Debugging line
+        output.update_frame(buffer)
 
 class StreamingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
