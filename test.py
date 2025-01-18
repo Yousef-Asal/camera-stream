@@ -89,11 +89,12 @@ with Picamera2() as picam2:
     # Set the update_frame callback to handle the frames
     picam2.pre_callback = output.update_frame
 
-    # Configure the camera with resolution, framerate, and colour_space
+    # Configure the camera with resolution, framerate, colour_space, and transform
     camera_config = {
         "resolution": (640, 480),
         "framerate": 24,
-        "colour_space": 'YUV420'  # Added colour_space configuration
+        "colour_space": 'YUV420',  # Added colour_space configuration
+        "transform": 0  # No rotation or flip
     }
     
     picam2.configure(camera_config)
