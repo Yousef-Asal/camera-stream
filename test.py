@@ -1,58 +1,68 @@
 import cv2
-import subprocess
-from flask import Flask, Response
+import numpy as np
+from flask import Flask, render_template, Response
+import threading
+import time
 
 app = Flask(__name__)
 
-# Open the camera using OpenCV (you can change this to your camera source)
+# Global variables for the video stream
+output_frame = None
+lock = threading.Lock()
+
+# Initialize the camera
 cap = cv2.VideoCapture(0)
 
-# Check if the camera opened successfully
-if not cap.isOpened():
-    print("Error: Could not open camera.")
-    exit()
+# Set the resolution to 640x480
+cap.set(3, 640)
+cap.set(4, 480)
 
-# FFmpeg command for streaming
-ffmpeg_command = [
-    "ffmpeg",
-    "-y",  # Overwrite output file if it exists
-    "-f", "rawvideo",  # Input format
-    "-vcodec", "rawvideo",  # Input codec
-    "-pix_fmt", "bgr24",  # Pixel format
-    "-s", "640x480",  # Resolution
-    "-r", "24",  # Frames per second
-    "-i", "-",  # Input from stdin
-    "-c:v", "libx264",  # Video codec
-    "-f", "mpegts",  # Output format
-    "http://127.0.0.1:8080/stream"  # Output stream URL
-]
-
-# Start the FFmpeg process
-ffmpeg_process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE)
-
-def generate_video():
+def capture_frame():
+    global output_frame, lock
     while True:
-        # Capture frame-by-frame from the camera
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Write the frame to FFmpeg's stdin
-        ffmpeg_process.stdin.write(frame.tobytes())
+        # Convert frame to RGB (Flask's render_template expects RGB)
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # Yield the frame for streaming via Flask
-        ret, jpeg = cv2.imencode('.jpg', frame)
-        if ret:
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+        # Lock the frame variable so that it can be updated safely
+        with lock:
+            output_frame = frame
 
-@app.route('/stream')
-def stream_video():
-    return Response(generate_video(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        # Sleep to reduce CPU load
+        time.sleep(0.1)
+
+def generate():
+    global output_frame, lock
+    while True:
+        if output_frame is not None:
+            # Ensure that the frame is locked before sending it to the client
+            with lock:
+                # Encode the frame as JPEG
+                ret, jpeg = cv2.imencode('.jpg', output_frame)
+                if ret:
+                    # Convert the encoded frame to bytes
+                    frame = jpeg.tobytes()
+                    # Yield the frame as a multipart HTTP response
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 @app.route('/')
 def index():
-    return "Streaming video at <a href='/stream'>/stream</a>"
+    return render_template('index.html')
+
+@app.route('/stream')
+def stream():
+    return Response(generate(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    # Start the capture frame thread
+    capture_thread = threading.Thread(target=capture_frame)
+    capture_thread.daemon = True
+    capture_thread.start()
+
+    # Start the Flask app
+    app.run(host='0.0.0.0', port=8080, debug=False)
