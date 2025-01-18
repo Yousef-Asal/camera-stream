@@ -91,17 +91,35 @@ with Picamera2() as picam2:
 
     # Configure the camera with resolution, framerate, colour_space, transform, and main key
     camera_config = {
-        "resolution": (640, 480),
-        "framerate": 24,
-        "colour_space": 'YUV420',  # Added colour_space configuration
-        "transform": 0,  # No rotation or flip
-        "main": {
-            "type": "raw",  # 'raw' type is typically used for capturing frames
-            "size": (640, 480),
-            "format": "BGR888",  # Use BGR format for standard color frame
-            "buffer_count": 3,  # Buffer count for frames
-        }
+    "resolution": (640, 480),
+    "framerate": 24,
+    "colour_space": 'YUV420',
+    "transform": 0,  # No rotation
+    "main": {
+        "type": "raw",
+        "size": (640, 480),
+        "format": "BGR888",
+        "buffer_count": 3
+    },
+    "lores": {
+        "type": "jpeg",
+        "size": (320, 240),  # Low resolution for preview
+        "format": "RGB888"
+    },
+    "sub": {
+        "type": "jpeg",
+        "size": (320, 240),
+        "format": "RGB888"
+    },
+    "exposure_mode": "auto",
+    "awb_mode": "auto",
+    "iso": 100,
+    "shutter_speed": 10000,
+    "brightness": 50,
+    "contrast": 50,
+    "saturation": 50
     }
+
     
     picam2.configure(camera_config)
 
